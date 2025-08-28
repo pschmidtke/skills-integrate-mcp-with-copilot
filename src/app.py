@@ -5,14 +5,81 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 import os
+import jwt
+import hashlib
 from pathlib import Path
+from datetime import datetime, timedelta
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
+
+# Authentication setup
+security = HTTPBearer(auto_error=False)
+SECRET_KEY = "mergington-high-school-secret-key-2025"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Load teacher credentials
+def load_teachers():
+    teachers = {}
+    try:
+        with open(os.path.join(Path(__file__).parent, "teachers.txt"), "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    username, password = line.split(":", 1)
+                    # Simple password hashing (in production, use proper hashing)
+                    password_hash = hashlib.sha256(password.encode()).hexdigest()
+                    teachers[username] = password_hash
+    except FileNotFoundError:
+        # Default teacher if file doesn't exist
+        teachers["admin"] = hashlib.sha256("school123".encode()).hexdigest()
+    return teachers
+
+teachers_db = load_teachers()
+
+# Pydantic models
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+# Authentication functions
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_teacher(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials is None:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return username
+    except jwt.PyJWTError:
+        return None
+
+def require_teacher_auth(teacher: str = Depends(verify_teacher)):
+    if teacher is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Teacher authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return teacher
 
 # Mount the static files directory
 current_dir = Path(__file__).parent
@@ -83,14 +150,43 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
+@app.post("/login", response_model=LoginResponse)
+def login(login_request: LoginRequest):
+    """Teacher login endpoint"""
+    username = login_request.username
+    password = login_request.password
+    
+    # Hash the provided password
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    
+    # Check credentials
+    if username not in teachers_db or teachers_db[username] != password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": username})
+    return LoginResponse(access_token=access_token, token_type="bearer")
+
+
+@app.get("/verify-auth")
+def verify_auth(teacher: str = Depends(verify_teacher)):
+    """Verify if the user is authenticated"""
+    if teacher:
+        return {"authenticated": True, "teacher": teacher}
+    return {"authenticated": False}
+
+
 @app.get("/activities")
 def get_activities():
     return activities
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
+def signup_for_activity(activity_name: str, email: str, teacher: str = Depends(require_teacher_auth)):
+    """Sign up a student for an activity (Teacher only)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -107,12 +203,12 @@ def signup_for_activity(activity_name: str, email: str):
 
     # Add student
     activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    return {"message": f"Teacher {teacher} signed up {email} for {activity_name}"}
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
-    """Unregister a student from an activity"""
+def unregister_from_activity(activity_name: str, email: str, teacher: str = Depends(require_teacher_auth)):
+    """Unregister a student from an activity (Teacher only)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -129,4 +225,4 @@ def unregister_from_activity(activity_name: str, email: str):
 
     # Remove student
     activity["participants"].remove(email)
-    return {"message": f"Unregistered {email} from {activity_name}"}
+    return {"message": f"Teacher {teacher} unregistered {email} from {activity_name}"}

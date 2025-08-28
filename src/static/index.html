@@ -10,6 +10,15 @@
     <header>
       <h1>Mergington High School</h1>
       <h2>Extracurricular Activities</h2>
+      <div class="auth-container">
+        <div id="auth-status" class="hidden">
+          <span id="teacher-name"></span>
+          <button id="logout-btn">Logout</button>
+        </div>
+        <div id="login-container">
+          <button id="login-btn">🔒 Teacher Login</button>
+        </div>
+      </div>
     </header>
 
     <main>
@@ -22,7 +31,10 @@
       </section>
 
       <section id="signup-container">
-        <h3>Sign Up for an Activity</h3>
+        <h3>Manage Student Registration</h3>
+        <div id="auth-warning" class="warning hidden">
+          <p>⚠️ Only teachers can register or unregister students. Please log in.</p>
+        </div>
         <form id="signup-form">
           <div class="form-group">
             <label for="email">Student Email:</label>
@@ -35,11 +47,34 @@
               <!-- Activity options will be loaded here -->
             </select>
           </div>
-          <button type="submit">Sign Up</button>
+          <div class="form-group">
+            <button type="submit" id="signup-btn" disabled>Sign Up Student</button>
+            <button type="button" id="unregister-btn" disabled>Unregister Student</button>
+          </div>
         </form>
         <div id="message" class="hidden"></div>
       </section>
     </main>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Teacher Login</h3>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" required />
+          </div>
+          <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" required />
+          </div>
+          <button type="submit">Login</button>
+        </form>
+        <div id="login-message" class="hidden"></div>
+      </div>
+    </div>
 
     <footer>
       <p>&copy; 2023 Mergington High School</p>

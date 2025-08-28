@@ -1,0 +1,5 @@
+# Teacher Credentials
+# Format: username:password (one per line)
+admin:school123
+teacher1:mergington2025
+teacher2:activities123
